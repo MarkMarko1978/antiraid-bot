@@ -1,43 +1,14 @@
-import discord
-from discord.ext import commands
-import re
-import datetime
-import os
-from collections import defaultdict
-
-intents = discord.Intents.default()
-intents.message_content = True
-intents.members = True
-
-bot = commands.Bot(command_prefix="!", intents=intents)
-
-DISCORD_INVITE_PATTERN = re.compile(
-    r"(discord\.gg/|discord\.com/invite/|discordapp\.com/invite/)\S+"
-)
-
-MARKDOWN_PATTERN = re.compile(r"(\*\*.*?\*\*|\*.*?\*|##.*|__.*?__|~~.*?~~)")
-
-ROLE_MODERATOR = "Модератор"
-ROLE_ADMIN = "Администратор"
-
-SPAM_THRESHOLD = 5
-SPAM_INTERVAL = 5
-CAPS_PERCENT = 70
-CAPS_MIN_LENGTH = 8
-
-channel_spam_tracker = defaultdict(list)
-CHANNEL_SPAM_THRESHOLD = 10
-CHANNEL_SPAM_INTERVAL = 5
-
-warnings = defaultdict(int)
-spam_tracker = defaultdict(list)
-
-def is_mod(member: discord.Member) -> bool:
-    role_names = [r.name for r in member.roles]
-    return ROLE_MODERATOR in role_names or ROLE_ADMIN in role_names
+embed.timestamp = discord.utils.utcnow()
+        await log_channel.send(embed=embed)
 
 async def mute_member(member: discord.Member, minutes: int, reason: str):
     await member.timeout(datetime.timedelta(minutes=minutes), reason=reason)
+    
+    dm_embed = discord.Embed(title="🔇 Вам выдан мут", color=discord.Color.red())
+    dm_embed.add_field(name="Сервер", value=member.guild.name, inline=False)
+    dm_embed.add_field(name="⏱ Время", value=f"{minutes} минут", inline=True)
+    dm_embed.add_field(name="📝 Причина", value=reason, inline=True)
+    await send_dm(member, dm_embed)
 
 def parse_time(time_str: str) -> int:
     total = 0
@@ -66,15 +37,29 @@ def is_channel_spamming(channel_id: int) -> bool:
 async def add_warning(member: discord.Member, channel: discord.TextChannel, reason: str):
     warnings[member.id] += 1
     count = warnings[member.id]
+    
+    dm_embed = discord.Embed(title="⚠️ Вы получили предупреждение", color=discord.Color.yellow())
+    dm_embed.add_field(name="Сервер", value=channel.guild.name, inline=False)
+    dm_embed.add_field(name="📝 Причина", value=reason, inline=True)
+    dm_embed.add_field(name="🔢 Варнов", value=f"{count}/3", inline=True)
+
     embed = discord.Embed(color=discord.Color.yellow())
     embed.add_field(name="⚠️ Предупреждение", value=f"{member.mention}", inline=True)
     embed.add_field(name="📝 Причина", value=reason, inline=True)
     embed.add_field(name="🔢 Варнов", value=f"{count}/3", inline=True)
+    
     if count >= 3:
+        dm_embed.add_field(name="🔨 Действие", value="Вы были забанены", inline=False)
+        dm_embed.color = discord.Color.dark_red()
+        await send_dm(member, dm_embed)
+        
         await member.ban(reason="3 предупреждения")
         embed.add_field(name="🔨 Действие", value="Бан с сервера", inline=False)
         embed.color = discord.Color.dark_red()
         warnings[member.id] = 0
+    else:
+        await send_dm(member, dm_embed)
+
     await channel.send(embed=embed, delete_after=15)
 
 def mod_check():
@@ -96,18 +81,22 @@ async def on_message(message: discord.Message):
     content = message.content
 
     if "@everyone" in content or "@here" in content:
+        await log_violation(bot, message.author, "Массовое упоминание (@everyone/@here)", content, message.channel)
         await message.delete()
         await mute_member(message.author, 30, "Использование @everyone/@here")
         await add_warning(message.author, message.channel, "Использование @everyone/@here")
         return
 
-    if DISCORD_INVITE_PATTERN.search(content):
+    cleaned_content = re.sub(r'\s+', '', content.lower())
+    if "discord.gg/" in cleaned_content or "discord.com/invite/" in cleaned_content or "discordapp.com/invite/" in cleaned_content:
+        await log_violation(bot, message.author, "Реклама Discord-сервера", content, message.channel)
         await message.delete()
         await mute_member(message.author, 60, "Реклама Discord-серверов")
         await add_warning(message.author, message.channel, "Реклама серверов")
         return
 
     if is_spamming(message.author.id):
+        await log_violation(bot, message.author, "Спам сообщениями", "Пользователь отправил слишком много сообщений за короткое время.", message.channel)
         await message.channel.purge(limit=10, check=lambda m: m.author == message.author)
         await mute_member(message.author, 15, "Спам")
         await add_warning(message.author, message.channel, "Спам")
@@ -154,6 +143,12 @@ async def unmute(ctx, member: discord.Member, *, reason: str = "Без прич�
         await ctx.send(f"❌ {member.mention} не в муте", delete_after=5)
         return
     await member.timeout(None, reason=reason)
+    
+    dm_embed = discord.Embed(title="🔊 Ваш мут снят", color=discord.Color.green())
+    dm_embed.add_field(name="Сервер", value=ctx.guild.name, inline=False)
+    dm_embed.add_field(name="📝 Причина", value=reason, inline=False)
+    await send_dm(member, dm_embed)
+
     embed = discord.Embed(color=discord.Color.green())
     embed.add_field(name="🔊 Мут снят", value=member.mention, inline=True)
     embed.add_field(name="📝 Причина", value=reason, inline=False)
@@ -180,6 +175,12 @@ async def unwarn(ctx, member: discord.Member):
         await ctx.send(f"❌ У {member.mention} нет варнов", delete_after=5)
         return
     warnings[member.id] -= 1
+    
+    dm_embed = discord.Embed(title="✅ С вас снято предупреждение", color=discord.Color.green())
+    dm_embed.add_field(name="Сервер", value=ctx.guild.name, inline=False)
+    dm_embed.add_field(name="🔢 Осталось варнов", value=f"{warnings[member.id]}/3", inline=True)
+    await send_dm(member, dm_embed)
+
     await ctx.send(f"✅ Варн снят. Теперь варнов: **{warnings[member.id]}/3**", delete_after=7)
 
 @bot.command(name="clear", aliases=["очистить"])
@@ -234,6 +235,8 @@ async def on_command_error(ctx, error):
     if isinstance(error, commands.MemberNotFound):
         await ctx.send("❌ Пользователь не найден", delete_after=5)
     elif isinstance(error, commands.MissingRequiredArgument):
-        await ctx.send("❌ Укажи пользователя", delete_after=5)
+        await ctx.send("❌ Укажи пользователя/аргументы", delete_after=5)
+    elif isinstance(error, commands.CommandNotFound):
+        pass
 
 bot.run(os.getenv("TOKEN"))
