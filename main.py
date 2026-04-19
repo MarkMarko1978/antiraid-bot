@@ -18,7 +18,7 @@ ROLE_MODERATOR = "Модератор"
 ROLE_ADMIN = "Администратор"
 
 # Твой канал для логов
-LOG_CHANNEL_ID = 1488165415090655333
+LOG_CHANNEL_ID = 1491087160433184862
 
 SPAM_THRESHOLD = 5
 SPAM_INTERVAL = 5
@@ -139,8 +139,8 @@ async def on_message(message: discord.Message):
 
     if is_spamming(message.author.id):
         await log_violation(bot, message.author, "Спам", "Массовая отправка сообщений", message.channel)
-        await message.channel.purge(limit=5, check=lambda m: m.author == message.author)
-        await mute_member(message.author, 15, "Спам")
+        await message.channel.purge(limit=7, check=lambda m: m.author == message.author)
+        await mute_member(message.author, 2, "Спам")
         await add_warning(message.author, message.channel, "Спам")
         return
 
