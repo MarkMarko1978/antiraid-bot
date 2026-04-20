@@ -1,2 +1,2 @@
 discord.py
-audioop-lpm
+audioop-copy
