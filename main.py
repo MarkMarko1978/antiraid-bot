@@ -20,8 +20,8 @@ ROLE_MODERATOR = "Модератор"
 ROLE_ADMIN = "Администратор"
 
 # Твой канал для логов и твой ID
-LOG_CHANNEL_ID = 1491087160433184862
-YOUR_USER_ID = 123456789012345678  # ЗАМЕНИ НА СВОЙ ID, ЧТОБЫ БОТ НЕ ЗАБАНИЛ ТЕБЯ
+LOG_CHANNEL_ID = 1491087160193978530
+YOUR_USER_ID = 1234753278927962142  # ЗАМЕНИ НА СВОЙ ID, ЧТОБЫ БОТ НЕ ЗАБАНИЛ ТЕБЯ
 
 MIN_ACCOUNT_AGE_DAYS = 7
 SPAM_THRESHOLD = 5
